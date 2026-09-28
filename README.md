@@ -63,6 +63,24 @@ The dependency list is part of this, not incidental to it: `grpcio`, `ldap3`,
 `redis` and `psycopg` are absent deliberately, and a test asserts their absence
 so "no route to the deployment" is structural rather than aspirational.
 
+## Authentication
+
+**A password is not sufficient**, and the deployment cannot be configured as
+though it were. An operator presents a password *and* a device: an authenticator
+app (TOTP) or a hardware security key. A single reusable secret can be phished,
+reused from another breach, or read over a shoulder, and no length policy
+changes that.
+
+| | |
+|---|---|
+| `totp` | Implemented. Base32 secret of at least 128 bits — the 80-bit secrets some setups still hand out are refused. Codes are **single-use within their window** and skew is one step, not a generous one. |
+| `webauthn` | Accepted configuration, **not implemented**. A build configured for it refuses to operate rather than accepting the password alone. |
+
+That last row is the rule the module exists to enforce: **an unimplemented
+factor fails closed.** A configuration naming a factor this build cannot verify
+must refuse — not skip the step, not log a warning and continue. An operator who
+registered a hardware key would reasonably believe it was being checked.
+
 ## The procedure it serves
 
 The administration application raises the signal, an administrator confirms with

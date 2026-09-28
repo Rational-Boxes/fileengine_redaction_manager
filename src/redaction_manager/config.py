@@ -102,6 +102,16 @@ class Config:
     access_key_id: str = field(default_factory=lambda: _env("RM_AWS_ACCESS_KEY_ID", _env("AWS_ACCESS_KEY_ID", "")))
     secret_access_key: str = field(default_factory=lambda: _env("RM_AWS_SECRET_ACCESS_KEY", _env("AWS_SECRET_ACCESS_KEY", "")))
 
+    # A second factor is MANDATORY. A username and password is one reusable
+    # secret — phishable, reusable from another breach, readable over a
+    # shoulder — and this application can destroy backup history.
+    #
+    # Comma-separated: "totp", "webauthn", or both. A method this build cannot
+    # verify makes the deployment not-ready rather than silently falling back
+    # to the password.
+    second_factor: str = field(default_factory=lambda: _env("RM_SECOND_FACTOR", "totp"))
+    totp_secret: str = field(default_factory=lambda: _env("RM_TOTP_SECRET", ""))
+
     # Volume limits (§4.3). A normal redaction is a handful of files; thousands
     # is not a busy week, it is an attack or a bug.
     max_objects: int = field(default_factory=lambda: _int("RM_MAX_OBJECTS", 50))
@@ -128,4 +138,7 @@ class Config:
             out.append(f"RM_ALLOWED_IPS is set but no entry parsed as a CIDR: {self.allowed_ips!r}")
         if self.max_objects <= 0:
             out.append("max_objects must be positive")
+
+        from .secondfactor import SecondFactor
+        out.extend(SecondFactor.from_config(self.second_factor, self.totp_secret).problems())
         return out

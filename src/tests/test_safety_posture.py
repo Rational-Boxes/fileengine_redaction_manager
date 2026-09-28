@@ -22,6 +22,8 @@ def _cfg(**over) -> Config:
     c.meta_bucket = "fe-meta-backup"
     c.access_key_id = "AKIAEXAMPLE"
     c.secret_access_key = "secret"
+    c.second_factor = "totp"
+    c.totp_secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
     c.host = "127.0.0.1"
     for k, v in over.items():
         setattr(c, k, v)
@@ -101,3 +103,42 @@ def test_it_has_no_route_to_the_deployment():
     for forbidden in ("grpcio", "python-interface", "python_interface", "ldap3", "redis", "psycopg"):
         assert forbidden not in declared, \
             f"{forbidden} would give this reach into the deployment"
+
+
+def test_a_password_alone_is_never_enough():
+    # The requirement, as an invariant: with no second factor configured the
+    # deployment is not ready, rather than falling back to the password.
+    r = TestClient(build_app(_cfg(second_factor=""))).get("/readyz")
+    assert r.status_code == 503
+    assert any("second factor" in p for p in r.json()["problems"])
+
+
+def test_a_factor_this_build_cannot_verify_fails_closed():
+    # webauthn is accepted configuration and is not implemented. A build
+    # configured for it must refuse, not accept something weaker — which is
+    # this platform's characteristic failure and least acceptable here.
+    r = TestClient(build_app(_cfg(second_factor="webauthn"))).get("/readyz")
+    assert r.status_code == 503
+    assert any("not implemented" in p for p in r.json()["problems"])
+
+
+def test_an_unknown_factor_is_refused():
+    r = TestClient(build_app(_cfg(second_factor="magic"))).get("/readyz")
+    assert r.status_code == 503
+    assert any("unknown second factor" in p for p in r.json()["problems"])
+
+
+def test_totp_configured_without_a_usable_secret_is_refused():
+    for bad in ("", "   ", "SHORT"):
+        r = TestClient(build_app(_cfg(totp_secret=bad))).get("/readyz")
+        assert r.status_code == 503, bad
+        assert any("secret is missing or too short" in p for p in r.json()["problems"])
+
+
+def test_hardware_key_alongside_totp_still_fails_until_implemented():
+    # Configuring both must not let the implemented one paper over the other:
+    # an operator who registered a YubiKey would reasonably believe it was
+    # being checked.
+    r = TestClient(build_app(_cfg(second_factor="totp,webauthn"))).get("/readyz")
+    assert r.status_code == 503
+    assert any("webauthn" in p for p in r.json()["problems"])
