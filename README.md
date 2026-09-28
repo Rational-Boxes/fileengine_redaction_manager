@@ -40,6 +40,25 @@ The platform's honest position until this is built: an erased file is
 4. **Never unattended** — including execution after the hold period. An
    unattended executor is an automated deletion path with a delay on it.
 
+## Reaching it
+
+Two shapes, chosen explicitly:
+
+| | |
+|---|---|
+| **Loopback** (default) | The operator reaches it over an SSH tunnel. Not on the network, so there is no network control to get wrong. |
+| **Allowlisted** | Bound to an interface, with the firewall admitting only known administrator addresses via `RM_ALLOWED_IPS`. |
+
+**Off-loopback with no allowlist is refused.** It is the one combination never
+intended, and it is exactly what a hurried "it wasn't reachable from my laptop"
+change produces.
+
+The firewall is the enforcement. The application's own peer check is a second
+line, because a firewall rule is a thing someone edits on a Friday — and it
+compares the **socket peer**, never `X-Forwarded-For`. There is no proxy in
+front of this by design, and trusting a header would let a caller choose the
+address that authorises it.
+
 The dependency list is part of this, not incidental to it: `grpcio`, `ldap3`,
 `redis` and `psycopg` are absent deliberately, and a test asserts their absence
 so "no route to the deployment" is structural rather than aspirational.

@@ -49,10 +49,37 @@ def test_without_the_meta_bucket_it_cannot_verify_and_refuses():
     assert any("verify" in p for p in r.json()["problems"])
 
 
-def test_the_review_ui_must_be_loopback():
+def test_off_loopback_without_an_allowlist_is_refused():
+    # The one combination never intended, and exactly what a hurried
+    # "it wasn't reachable from my laptop" change produces.
     r = TestClient(build_app(_cfg(host="0.0.0.0"))).get("/readyz")
     assert r.status_code == 503
-    assert any("loopback" in p for p in r.json()["problems"])
+    assert any("RM_ALLOWED_IPS" in p for p in r.json()["problems"])
+
+
+def test_off_loopback_with_an_allowlist_is_allowed():
+    c = _cfg(host="0.0.0.0", allowed_ips="203.0.113.7/32, 198.51.100.0/24")
+    assert TestClient(build_app(c)).get("/readyz").status_code == 200
+
+
+def test_a_malformed_allowlist_is_refused_rather_than_ignored():
+    # An unparseable allowlist that silently admitted everyone would be the
+    # worst outcome: it reads as configured and enforces nothing.
+    c = _cfg(host="0.0.0.0", allowed_ips="not-an-address")
+    r = TestClient(build_app(c)).get("/readyz")
+    assert r.status_code == 503
+    assert any("CIDR" in p for p in r.json()["problems"])
+
+
+def test_peer_matching():
+    c = _cfg(host="0.0.0.0", allowed_ips="203.0.113.7/32,198.51.100.0/24")
+    assert c.peer_allowed("203.0.113.7")
+    assert c.peer_allowed("198.51.100.42")
+    assert not c.peer_allowed("203.0.113.8")
+    assert not c.peer_allowed("not-an-ip")
+    # With a loopback bind and no allowlist, nothing off-host can reach it, so
+    # the check is not what is protecting anything.
+    assert _cfg().peer_allowed("127.0.0.1")
 
 
 def test_no_operation_routes_exist_yet():
